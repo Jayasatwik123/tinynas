@@ -63,7 +63,10 @@ class Population(metaclass=ABCMeta):
             unique_idx_list.append(the_idx)
 
         # sort population list, pop the duplicate structure, and maintain the population
-        sort_idx = list(np.argsort(self.popu_acc_list))
+        # sort_idx = list(np.argsort(self.popu_acc_list))
+        objectives = [self.popu_acc_list] + [getattr(self, f'popu_{key}_list') for key in self.budgets]
+        sort_idx = nsga2_non_dominated_sort(objectives)
+
         sort_idx = sort_idx[::-1]
         temp_sort_idx = sort_idx[:]
         for idx in temp_sort_idx:
@@ -143,3 +146,229 @@ class Population(metaclass=ABCMeta):
             individual_info[key] = getattr(self, f'popu_{key}_list')[idx]
 
         return individual_info
+
+
+def non_dominated_sort(objectives):
+    """
+    Perform non-dominated sorting on a population based on a list of objectives.
+    
+    Parameters:
+    objectives (list of list): A list where each sublist contains the values of a single objective for all individuals.
+    
+    Returns:
+    list of lists: A list of non-dominated fronts, each represented as a list of indices.
+    """
+    # Transpose the list to have individuals with their objective values
+    population_size = len(objectives[0])  # Number of individuals
+    num_objectives = len(objectives)  # Number of objectives
+    fronts = []
+    dominated_count = np.zeros(population_size)
+    dominated_set = [set() for _ in range(population_size)]
+    rank = np.zeros(population_size)
+
+    # Compare each individual to all others to determine dominance
+    for p in range(population_size):
+        for q in range(population_size):
+            if p != q:
+                # Check if individual p dominates individual q
+                dominates_pq = all(objectives[i][p] <= objectives[i][q] for i in range(num_objectives)) and any(objectives[i][p] < objectives[i][q] for i in range(num_objectives))
+                dominates_qp = all(objectives[i][q] <= objectives[i][p] for i in range(num_objectives)) and any(objectives[i][q] < objectives[i][p] for i in range(num_objectives))
+                
+                if dominates_pq:
+                    dominated_set[p].add(q)
+                elif dominates_qp:
+                    dominated_count[p] += 1
+
+        # If the individual is not dominated by anyone, it's part of the first front
+        if dominated_count[p] == 0:
+            rank[p] = 0
+    
+    # First front initialization
+    front = [i for i in range(population_size) if rank[i] == 0]
+    fronts.append(front)
+    
+    # Process subsequent fronts
+    current_front = 0
+    while len(fronts[current_front]) > 0:
+        next_front = []
+        for p in fronts[current_front]:
+            for q in dominated_set[p]:
+                dominated_count[q] -= 1
+                if dominated_count[q] == 0:
+                    rank[q] = current_front + 1
+                    next_front.append(q)
+        current_front += 1
+        fronts.append(next_front)
+
+    return fronts
+
+
+def crowding_distance(objectives, front):
+    """
+    Compute the crowding distance of each individual in the given front.
+    
+    Parameters:
+    objectives (list of list): A list where each sublist contains the values of a single objective for all individuals.
+    front (list): A list of indices corresponding to the individuals in the front.
+    
+    Returns:
+    list: A list of crowding distances for each individual in the front.
+    """
+    num_objectives = len(objectives)
+    front_size = len(front)
+    crowding_dist = np.zeros(front_size)
+
+    # Iterate over each objective and calculate the crowding distance
+    for i in range(num_objectives):
+        # Sort the front based on the i-th objective
+        front_sorted = sorted(front, key=lambda x: objectives[i][x])
+        # Assign extreme values to the boundaries
+        crowding_dist[0] = crowding_dist[front_size - 1] = float('inf')
+        
+        for j in range(1, front_size - 1):
+            # Calculate the crowding distance
+            if objectives[i][front_sorted[front_size - 1]] == objectives[i][front_sorted[0]]:
+                crowding_dist[j] = float('inf')
+            else:
+                crowding_dist[j] += (objectives[i][front_sorted[j + 1]] - objectives[i][front_sorted[j - 1]]) / (objectives[i][front_sorted[front_size - 1]] - objectives[i][front_sorted[0]])
+
+    return crowding_dist 
+
+
+def nsga2_non_dominated_sort(objectives):
+    """
+    Perform NSGA-II non-dominated sorting and return the indices sorted by non-domination levels.
+    This includes diversity within the same rank using crowding distance.
+    
+    Parameters:
+    objectives (list of list): A list where each sublist contains the values of a single objective for all individuals.
+    
+    Returns:
+    list: A list of indices sorted by non-domination level and crowding distance.
+    """
+    fronts = non_dominated_sort(objectives)
+    sorted_indices = []
+
+    # Create a sorted list of indices based on non-domination rank
+    for front in fronts:
+        if len(front) > 1:
+            # Calculate crowding distance for the front if it has more than one individual
+            crowding_dist = crowding_distance(objectives, front)
+            # Sort the front by crowding distance in descending order
+            front_sorted = [x for _, x in sorted(zip(crowding_dist, front), reverse=True)]
+            sorted_indices.extend(front_sorted)
+        else:
+            sorted_indices.extend(front)
+    
+    return sorted_indices
+
+
+
+# def non_dominated_sort(objectives):
+#     """
+#     Perform non-dominated sorting on a population based on a list of objectives.
+    
+#     Parameters:
+#     objectives (list of list): A list of lists where each sublist contains the objective values of an individual.
+    
+#     Returns:
+#     list of lists: A list of non-dominated fronts, each represented as a list of indices.
+#     """
+#     population_size = len(objectives)
+#     fronts = []
+#     dominated_count = np.zeros(population_size)
+#     dominated_set = [set() for _ in range(population_size)]
+#     rank = np.zeros(population_size)
+
+#     # Compare each individual to all others to determine dominance
+#     for p in range(population_size):
+#         for q in range(population_size):
+#             if p != q:
+#                 # Check if p dominates q or vice versa
+#                 dominates_pq = all(objectives[p][i] <= objectives[q][i] for i in range(len(objectives[0]))) and any(objectives[p][i] < objectives[q][i] for i in range(len(objectives[0])))
+#                 dominates_qp = all(objectives[q][i] <= objectives[p][i] for i in range(len(objectives[0]))) and any(objectives[q][i] < objectives[p][i] for i in range(len(objectives[0])))
+                
+#                 if dominates_pq:
+#                     dominated_set[p].add(q)
+#                 elif dominates_qp:
+#                     dominated_count[p] += 1
+
+#         # If the individual is not dominated, it's part of the first front
+#         if dominated_count[p] == 0:
+#             rank[p] = 0
+    
+#     # First front initialization
+#     front = [i for i in range(population_size) if rank[i] == 0]
+#     fronts.append(front)
+    
+#     # Process subsequent fronts
+#     current_front = 0
+#     while len(fronts[current_front]) > 0:
+#         next_front = []
+#         for p in fronts[current_front]:
+#             for q in dominated_set[p]:
+#                 dominated_count[q] -= 1
+#                 if dominated_count[q] == 0:
+#                     rank[q] = current_front + 1
+#                     next_front.append(q)
+#         current_front += 1
+#         fronts.append(next_front)
+
+#     return fronts
+
+
+# def crowding_distance(objectives, front):
+#     """
+#     Compute the crowding distance of each individual in the given front.
+    
+#     Parameters:
+#     objectives (list of list): A list of lists where each sublist contains the objective values of an individual.
+#     front (list): A list of indices corresponding to the individuals in the front.
+    
+#     Returns:
+#     list: A list of crowding distances for each individual in the front.
+#     """
+#     num_objectives = len(objectives[0])
+#     front_size = len(front)
+#     crowding_dist = np.zeros(front_size)
+
+#     # Iterate over each objective and calculate the crowding distance
+#     for i in range(num_objectives):
+#         # Sort the front based on the i-th objective
+#         front_sorted = sorted(front, key=lambda x: objectives[x][i])
+#         # Assign extreme values to the boundaries
+#         crowding_dist[0] = crowding_dist[front_size - 1] = float('inf')
+        
+#         for j in range(1, front_size - 1):
+#             # Calculate the crowding distance
+#             crowding_dist[j] += (objectives[front_sorted[j + 1]][i] - objectives[front_sorted[j - 1]][i]) / (objectives[front_sorted[front_size - 1]][i] - objectives[front_sorted[0]][i])
+
+#     return crowding_dist
+
+
+# def nsga2_non_dominated_sort(objectives):
+#     """
+#     Perform NSGA-II non-dominated sorting and return the indices sorted by non-domination levels.
+#     This includes diversity within the same rank using crowding distance.
+    
+#     Parameters:
+#     objectives (list of list): A list of lists where each sublist contains the objective values of an individual.
+    
+#     Returns:
+#     list: A list of indices sorted by non-domination level and crowding distance.
+#     """
+#     fronts = non_dominated_sort(objectives)
+#     sorted_indices = []
+
+#     # Create a sorted list of indices based on non-domination rank
+#     for front in fronts:
+#         if len(front) > 1:
+#             # Calculate crowding distance for the front if it has more than one individual
+#             crowding_dist = crowding_distance(objectives, front)
+#             # Sort the front by crowding distance in descending order
+#             front_sorted = [x for _, x in sorted(zip(crowding_dist, front), reverse=True)]
+#             sorted_indices.extend(front_sorted)
+#         else:
+#             sorted_indices.extend(front)
+    
+#     return sorted_indices

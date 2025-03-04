@@ -119,7 +119,7 @@ class Strategy(metaclass=ABCMeta):
 
         for key in self._budget_values:
             kwargs = {}
-            if key in {'flops', 'max_feature'}:
+            if key in {'flops', 'max_feature', 'ram'}:
                 kwargs['resolution'] = self.cfg.image_size
                 if 'frames' in self.cfg:
                     kwargs['frames'] = self.cfg.frames

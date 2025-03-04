@@ -26,7 +26,8 @@ model = dict(
 budgets = [
     dict(type = "flops", budget = 41e8),
     dict(type = "layers",budget = 49),
-    dict(type = "model_size", budget = 25.55e6)
+    dict(type = "model_size", budget = 25.55e6),
+    dict(type = "ram", budget = 300e6),
     ]
 
 """ Score config """
@@ -43,7 +44,7 @@ search=dict(
     minor_mutation = False,  # whether fix the stage layer
     minor_iter = 100000,  # which iteration to enable minor_mutation
     popu_size = 256,
-    num_random_nets = 100000,  # the searching iterations
+    num_random_nets = 1000,  # the searching iterations
     sync_size_ratio = 1.0,  # control each thread sync number: ratio * popu_size
     num_network = 1,
 )

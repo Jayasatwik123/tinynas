@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as F
+import torch.autograd.profiler as profiler
 
 from .blocks_cnn_2d import __all_blocks__, network_weight_stupid_init
 from .blocks_cnn_2d.qconv import QLinear
@@ -298,6 +299,21 @@ class CnnNet(Model):
 
     def get_max_feature(self, resolution):
         return np.max(self.get_max_feature_num(resolution))
+    
+    def get_ram(self, resolution):
+        model = self
+        input = torch.rand(1, self.structure_info[0]['in'], resolution, resolution)
+
+        model(input)
+
+        with profiler.profile(profile_memory=True) as prof:
+            with torch.no_grad():
+                out = model(input)
+        
+        return max([data.cpu_memory_usage for data in prof.key_averages()]) + 4*self.get_model_size()
+
+    def get_flash(self, ):
+        return 4*self.get_model_size()
 
     def build(self, structure_info):
         if structure_info is None:

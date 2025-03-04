@@ -7,6 +7,8 @@ from .base import BudgetBase
 @BUDGETS.register_module(module_name = 'latency')
 @BUDGETS.register_module(module_name = 'max_feature')
 @BUDGETS.register_module(module_name = 'efficient_score')
+@BUDGETS.register_module(module_name = 'ram')
+@BUDGETS.register_module(module_name = 'flash')
 class ExceedBudget(BudgetBase):
     def __init__(self, name, budget, logger, **kwargs):
         super().__init__(name, budget)
